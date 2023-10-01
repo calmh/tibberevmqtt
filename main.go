@@ -11,12 +11,12 @@ import (
 )
 
 type CLI struct {
-	MQTTBroker      string        `help:"MQTT broker address" default:"tcp://localhost:1883"`
-	MQTTUsername    string        `help:"MQTT username" default:""`
-	MQTTPassword    string        `help:"MQTT password" default:""`
-	TibberUsername  string        `help:"Tibber username" default:""`
-	TibberPassword  string        `help:"Tibber password" default:""`
-	RefreshInterval time.Duration `help:"Refresh interval" default:"2m"`
+	MQTTBroker      string        `help:"MQTT broker address" default:"tcp://localhost:1883" env:"MQTT_BROKER"`
+	MQTTUsername    string        `help:"MQTT username" default:"" env:"MQTT_USERNAME"`
+	MQTTPassword    string        `help:"MQTT password" default:"" env:"MQTT_PASSWORD"`
+	TibberUsername  string        `help:"Tibber username" default:"" env:"TIBBER_USERNAME"`
+	TibberPassword  string        `help:"Tibber password" default:"" env:"TIBBER_PASSWORD"`
+	RefreshInterval time.Duration `help:"Refresh interval" default:"2m" env:"REFRESH_INTERVAL"`
 }
 
 func main() {
