@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/alecthomas/kong"
@@ -36,10 +38,6 @@ func main() {
 		log.Fatal("Connect to MQTT broker:", token.Error())
 	}
 
-	if err := announceMQTT(client); err != nil {
-		log.Fatal("Announce MQTT:", err)
-	}
-
 	svc := tibberSvc{
 		username: cli.TibberUsername,
 		password: cli.TibberPassword,
@@ -47,42 +45,70 @@ func main() {
 	t := time.NewTimer(time.Second)
 	for range t.C {
 		t.Reset(cli.RefreshInterval)
-		soc, err := svc.getEVSoC(context.Background())
+		evs, err := svc.getEVSoC(context.Background())
 		if err != nil {
 			log.Println("Get EV SoC:", err)
 			continue
 		}
-		payload, err := json.Marshal(map[string]int{"soc": soc})
-		if err != nil {
-			log.Println("Marshal SoC:", err)
-			continue
-		}
-		token := client.Publish("homeassistant/sensor/tibberEV0/state", 0, false, string(payload))
-		token.Wait()
-		if token.Error() != nil {
-			log.Println("Publish SoC:", token.Error())
+		for _, ev := range evs {
+			if err := announceMQTT(client, ev); err != nil {
+				log.Println("Announce MQTT:", err)
+			}
 		}
 	}
 }
 
-func announceMQTT(client mqtt.Client) error {
-	cfgTopic := "homeassistant/sensor/tibberEV0/config"
-	cfgPayload := map[string]any{
+func announceMQTT(client mqtt.Client, ev EVSoC) error {
+	id := strings.ReplaceAll(ev.ID, "-", "")
+	stateTopic := fmt.Sprintf("tibberevmqtt/%s/state", id)
+	state := map[string]any{
+		"soc":      ev.Percent,
+		"charging": ev.IsCharging,
+	}
+	if err := sendMQTT(client, stateTopic, state, true); err != nil {
+		return err
+	}
+
+	socTopic := fmt.Sprintf("homeassistant/sensor/tibberEV%ssoc/config", id)
+	socPayload := map[string]any{
 		"device_class":        "battery",
-		"state_topic":         "homeassistant/sensor/tibberEV0/state",
+		"state_topic":         stateTopic,
 		"unit_of_measurement": "%",
 		"value_template":      "{{ value_json.soc }}",
-		"unique_id":           "batteryev0",
+		"unique_id":           fmt.Sprintf("%ssoc", id),
 		"device": map[string]any{
-			"identifiers": []string{"ev0"},
-			"name":        "EV",
+			"identifiers": []string{id},
+			"name":        ev.Name,
 		},
 	}
-	cfg, err := json.Marshal(cfgPayload)
+	if err := sendMQTT(client, socTopic, socPayload, true); err != nil {
+		return err
+	}
+
+	chargingTopic := fmt.Sprintf("homeassistant/binary_sensor/tibberEV%scharging/config", id)
+	chargingPayload := map[string]any{
+		"device_class":   "battery_charging",
+		"state_topic":    stateTopic,
+		"value_template": "{{ value_json.charging }}",
+		"unique_id":      fmt.Sprintf("%scharging", id),
+		"device": map[string]any{
+			"identifiers": []string{id},
+			"name":        ev.Name,
+		},
+	}
+	if err := sendMQTT(client, chargingTopic, chargingPayload, true); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func sendMQTT(client mqtt.Client, topic string, payload any, retain bool) error {
+	bs, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	token := client.Publish(cfgTopic, 0, false, cfg)
+	token := client.Publish(topic, 0, retain, bs)
 	token.Wait()
 	return token.Error()
 }
