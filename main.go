@@ -63,7 +63,7 @@ func announceMQTT(client mqtt.Client, ev EVSoC) error {
 	stateTopic := fmt.Sprintf("tibberevmqtt/%s/state", id)
 	state := map[string]any{
 		"soc":      ev.Percent,
-		"charging": ev.IsCharging,
+		"charging": map[bool]string{false: "OFF", true: "ON"}[ev.IsCharging],
 	}
 	if err := sendMQTT(client, stateTopic, state, true); err != nil {
 		return err
