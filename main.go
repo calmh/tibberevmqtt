@@ -2,18 +2,20 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/sha256"
 	"fmt"
 	"log"
-	"strings"
+	"os"
 	"time"
 
+	"calmh.dev/tibberevmqtt/hassmqtt"
 	"github.com/alecthomas/kong"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 type CLI struct {
 	MQTTBroker      string        `help:"MQTT broker address" default:"tcp://localhost:1883" env:"MQTT_BROKER"`
+	MQTTClientID    string        `help:"MQTT client ID" env:"MQTT_CLIENT_ID"`
 	MQTTUsername    string        `help:"MQTT username" default:"" env:"MQTT_USERNAME"`
 	MQTTPassword    string        `help:"MQTT password" default:"" env:"MQTT_PASSWORD"`
 	TibberUsername  string        `help:"Tibber username" default:"" env:"TIBBER_USERNAME"`
@@ -25,9 +27,17 @@ func main() {
 	var cli CLI
 	kong.Parse(&cli)
 
+	if cli.MQTTClientID == "" {
+		hn, _ := os.Hostname()
+		home, _ := os.UserHomeDir()
+		hf := sha256.New()
+		fmt.Fprintf(hf, "%s\n%s\n", hn, home)
+		cli.MQTTClientID = fmt.Sprintf("h%x", hf.Sum(nil))[:12]
+	}
+
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(cli.MQTTBroker)
-	opts.SetClientID("calmh.dev/tibberevmqtt")
+	opts.SetClientID(cli.MQTTClientID)
 	if cli.MQTTUsername != "" && cli.MQTTPassword != "" {
 		opts.SetUsername(cli.MQTTUsername)
 		opts.SetPassword(cli.MQTTPassword)
@@ -43,6 +53,9 @@ func main() {
 		password: cli.TibberPassword,
 	}
 	t := time.NewTimer(time.Second)
+
+	metrics := make(map[string]*hassmqtt.Metric)
+
 	for range t.C {
 		t.Reset(cli.RefreshInterval)
 		evs, err := svc.getEVSoC(context.Background())
@@ -51,64 +64,25 @@ func main() {
 			continue
 		}
 		for _, ev := range evs {
-			if err := announceMQTT(client, ev); err != nil {
-				log.Println("Announce MQTT:", err)
+			m, ok := metrics[ev.ID]
+			if !ok {
+				m = &hassmqtt.Metric{
+					Device: &hassmqtt.Device{
+						Namespace: "tibberevmqtt",
+						ClientID:  cli.MQTTClientID,
+						ID:        ev.ID,
+						Name:      ev.Name,
+					},
+					ID:          "soc",
+					DeviceType:  "sensor",
+					DeviceClass: "battery",
+					Unit:        "%",
+				}
+			}
+			if err := m.Publish(client, ev.Percent); err != nil {
+				log.Println("Publish:", err)
+				continue
 			}
 		}
 	}
-}
-
-func announceMQTT(client mqtt.Client, ev EVSoC) error {
-	id := strings.ReplaceAll(ev.ID, "-", "")
-	stateTopic := fmt.Sprintf("tibberevmqtt/%s/state", id)
-	state := map[string]any{
-		"soc":      ev.Percent,
-		"charging": map[bool]string{false: "OFF", true: "ON"}[ev.IsCharging],
-	}
-	if err := sendMQTT(client, stateTopic, state, true); err != nil {
-		return err
-	}
-
-	socTopic := fmt.Sprintf("homeassistant/sensor/tibberEV%ssoc/config", id)
-	socPayload := map[string]any{
-		"device_class":        "battery",
-		"state_topic":         stateTopic,
-		"unit_of_measurement": "%",
-		"value_template":      "{{ value_json.soc }}",
-		"unique_id":           fmt.Sprintf("%ssoc", id),
-		"device": map[string]any{
-			"identifiers": []string{id},
-			"name":        ev.Name,
-		},
-	}
-	if err := sendMQTT(client, socTopic, socPayload, true); err != nil {
-		return err
-	}
-
-	chargingTopic := fmt.Sprintf("homeassistant/binary_sensor/tibberEV%scharging/config", id)
-	chargingPayload := map[string]any{
-		"device_class":   "battery_charging",
-		"state_topic":    stateTopic,
-		"value_template": "{{ value_json.charging }}",
-		"unique_id":      fmt.Sprintf("%scharging", id),
-		"device": map[string]any{
-			"identifiers": []string{id},
-			"name":        ev.Name,
-		},
-	}
-	if err := sendMQTT(client, chargingTopic, chargingPayload, true); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func sendMQTT(client mqtt.Client, topic string, payload any, retain bool) error {
-	bs, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	token := client.Publish(topic, 0, retain, bs)
-	token.Wait()
-	return token.Error()
 }
