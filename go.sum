@@ -1,3 +1,5 @@
+calmh.dev/hassmqtt v0.0.0-20231007091328-d7aee239f929 h1:jgWK+HWtEJGf+yrQtOmXqD8Blso2DZJwjTGAJCK6cO8=
+calmh.dev/hassmqtt v0.0.0-20231007091328-d7aee239f929/go.mod h1:DMruEGEa7/ui+LHkYSfrrT2JDYu9uY0PV6twnqbHCew=
 github.com/alecthomas/assert/v2 v2.1.0 h1:tbredtNcQnoSd3QBhQWI7QZ3XHOVkw1Moklp2ojoH/0=
 github.com/alecthomas/assert/v2 v2.1.0/go.mod h1:b/+1DI2Q6NckYi+3mXyH3wFb8qG37K/DuK80n7WefXA=
 github.com/alecthomas/kong v0.8.0 h1:ryDCzutfIqJPnNn0omnrgHLbAggDQM2VWHikE1xqK7s=

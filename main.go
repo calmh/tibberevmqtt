@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"calmh.dev/tibberevmqtt/hassmqtt"
+	"calmh.dev/hassmqtt"
 	"github.com/alecthomas/kong"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
