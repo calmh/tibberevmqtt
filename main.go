@@ -2,10 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"calmh.dev/hassmqtt"
@@ -15,7 +12,6 @@ import (
 
 type CLI struct {
 	MQTTBroker      string        `help:"MQTT broker address" default:"tcp://localhost:1883" env:"MQTT_BROKER"`
-	MQTTClientID    string        `help:"MQTT client ID" env:"MQTT_CLIENT_ID"`
 	MQTTUsername    string        `help:"MQTT username" default:"" env:"MQTT_USERNAME"`
 	MQTTPassword    string        `help:"MQTT password" default:"" env:"MQTT_PASSWORD"`
 	TibberUsername  string        `help:"Tibber username" default:"" env:"TIBBER_USERNAME"`
@@ -27,17 +23,10 @@ func main() {
 	var cli CLI
 	kong.Parse(&cli)
 
-	if cli.MQTTClientID == "" {
-		hn, _ := os.Hostname()
-		home, _ := os.UserHomeDir()
-		hf := sha256.New()
-		fmt.Fprintf(hf, "%s\n%s\n", hn, home)
-		cli.MQTTClientID = fmt.Sprintf("h%x", hf.Sum(nil))[:12]
-	}
-
+	clientID := hassmqtt.ClientID("tibberevmqtt")
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(cli.MQTTBroker)
-	opts.SetClientID(cli.MQTTClientID)
+	opts.SetClientID(clientID)
 	if cli.MQTTUsername != "" && cli.MQTTPassword != "" {
 		opts.SetUsername(cli.MQTTUsername)
 		opts.SetPassword(cli.MQTTPassword)
@@ -69,7 +58,7 @@ func main() {
 				m = &hassmqtt.Metric{
 					Device: &hassmqtt.Device{
 						Namespace: "tibberevmqtt",
-						ClientID:  cli.MQTTClientID,
+						ClientID:  clientID,
 						ID:        ev.ID,
 						Name:      ev.Name,
 					},
